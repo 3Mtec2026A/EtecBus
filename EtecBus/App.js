@@ -185,20 +185,92 @@ export default function App() {
         setUserLocation(coord);
 
         let nearest = null, minDist = Infinity;
-
-
+        BUS_STOPS.forEach(stop => {
+          const d = getDistance(coord, stop.coordinate);
+          if (d < minDist) { minDist = d; nearest = { ...stop, distance: d}; }
+        });
+        setNeareastStop(nearest);
+        setSelectedStop(nearest);
       } else {
         setSelectedStop(BUS_STOPS[0]);
       }
       setLoading(false);
-
     })();
   }, []);
 
+  function handleWebViewMessage(event) {
+    try {
+      const msg = JSON.parse(event.nativeEvent.data);
+      if (msg.type === 'SELECT_STOP') {
+        const stop = BUS_STOPS.find(s => s.id === msg.stopId);
+        if (stop) {
+          setSelectedStop(stop);
+          webViewRef.current?.postMessage(
+            JSON.stringify({ type: 'DRAW_ROUTE', stopId: stop.id })
+          );
+        }
+      }
+    } catch (_) {}
+  }
+
+  function openNavigation() {
+    if (!selectedStop) return;
+    const { latitude, longitude } = selectedStop.coordinate;
+    const url = Platform.select({
+      ios: `maps://app?daddr=${latitude},${longitude}`,
+      android: `google.navigation:q=${latitude},${longitude}`
+    });
+    Linking.openURL(url).catch(() => {});
+  }
+
+  if (loading) {
+    return (
+      <View style={styles.loading}>
+        <ActivityIndicator size="large" color="#1E88E5" />
+        <Text style={styles.loadingText}>Carregando mapa...</Text>
+      </View>
+    )
+  }
+
+  const html = buildLeafletHTML(
+    userLocation,
+    nearestStop?.id ?? '',
+    selectedStop?.id ?? ''
+  );
+
   return (
     <View style={styles.container}>
-      <Text> your app!</Text>
-      <StatusBar style="auto" />
+      <StatusBar style="dark" />
+
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>🚌 Ônibus para a Escola</Text>
+        <Text style={styles.headerSub}>{SCHOOL.name}</Text>
+      </View>
+
+      <WebView
+        ref={webViewRef}
+        style={styles.map}
+        originWhitelist={['*']}
+        source={{ html }}
+        onMessage={handleWebViewMessage}
+        javaScriptEnabled
+        domStorageEnabled
+        mixedContentMode='always'
+      />
+
+      <TouchableOpacity
+        style={styles.fitButton}
+        onPress={() => webViewRef.current?.postMessage(
+          JSON.stringify({ type: 'FIT_ALL'})
+        )}
+      >
+        <Text style={styles.fiButtonText}>🌎 Ver Todos</Text>
+      </TouchableOpacity>
+
+      <View style={styles.panel}>
+
+      </View>
+
     </View>
   );
 }
